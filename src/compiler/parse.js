@@ -139,6 +139,11 @@ function makeAttrsMap(attrs) {
   return map;
 }
 
+
+
+var isPlainTextElement = makeMap('script,style,textarea', true);
+  console.log('isPlainTextElement',isPlainTextElement)
+
 export function parse(template, options) {
   debugger
 
@@ -172,7 +177,7 @@ export function parse(template, options) {
   parseHTML(template, {
     expectHTML: options.expectHTML,
     start: function (tag, attrs, unary, start$1, end) {
-      console.log(attrs)
+      // console.log(attrs)
       var element = createASTElement(tag, attrs, currentParent);
 
       if (options.outputSourceRange) {
@@ -281,7 +286,7 @@ export function parseHTML(html, options) {
 
   while (html) {
     last = html;
-    if (!lastTag) {
+    if (!lastTag || !isPlainTextElement(lastTag)) {
       var textEnd = html.indexOf("<");
       if (textEnd === 0) {
         // 一开始就是标签 比如<div>
@@ -294,7 +299,7 @@ export function parseHTML(html, options) {
           if (shouldIgnoreFirstNewline(startTagMatch.tagName, html)) {
             advance(1);
           }
-          // continue
+          continue
         }
 
         // 结束标签
@@ -303,7 +308,7 @@ export function parseHTML(html, options) {
           var curIndex = index;
           advance(endTagMatch[0].length);
           parseEndTag(endTagMatch[1], curIndex, index);
-          // continue
+          continue
         }
       }
 
