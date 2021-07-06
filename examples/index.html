@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="app" class="abc ccc fff" data-id="agg">神鼎飞丹砂
+      <input type="text" v-model="name" />
+      <div>{{age}}</div>
+    </div>
+
+    <script src="./vue.js"></script>
+    <script>
+      var app = new Vue({
+        el: "#app",
+        data: {
+          name: "我是ZkjVue",
+          age: "18",
+          show: true,
+          list: [{},{}]
+        },
+      });
+      console.log(app)
+    </script>
+
+
+    <!-- <script type="module">
+
+      import ZkjVue from '../src/code/instance/index.js'
+
+      var app = new ZkjVue({
+        el: "#app",
+        data: {
+          name: "我是ZkjVue",
+          age: "18",
+        },
+      });
+
+      window.app = app
+    </script> -->
+  </body>
+</html>

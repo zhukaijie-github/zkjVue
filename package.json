@@ -1,0 +1,20 @@
+{
+  "name": "zkjVue",
+  "version": "1.0.0",
+  "description": "手写vue源码，实现一个简易的vue框架",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhukaijie-github/zkjVue.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zhukaijie-github/zkjVue/issues"
+  },
+  "homepage": "https://github.com/zhukaijie-github/zkjVue#readme"
+}
