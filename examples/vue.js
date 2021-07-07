@@ -3949,6 +3949,7 @@
 
   function lifecycleMixin (Vue) {
     Vue.prototype._update = function (vnode, hydrating) {
+      debugger
       var vm = this;
       var prevEl = vm.$el;
       var prevVnode = vm._vnode;
@@ -9330,7 +9331,6 @@
   }
 
   function parseHTML (html, options) {
-    debugger
     var stack = [];
     var expectHTML = options.expectHTML;
     var isUnaryTag$$1 = options.isUnaryTag || no;
@@ -9879,7 +9879,7 @@
       },
 
       chars: function chars (text, start, end) {
-        console.log(currentParent)
+        console.log('chars--',currentParent)
         if (!currentParent) {
           {
             if (text === template) {
@@ -11893,6 +11893,8 @@
     options
   ) {
     var ast = parse(template.trim(), options);
+
+    console.log('ast', ast)
     
     if (options.optimize !== false) {
       optimize(ast, options);

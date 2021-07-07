@@ -8,10 +8,8 @@ import { generate } from "./generate.js"
 export function compileToFunctions(template, options) {
   // 生成ast树
   const ast = parse(template.trim(), options)
-
-	// const code = generate(ast, options)
-
-  const code = '1'
+  console.log('ast', ast)
+	const code = generate(ast, options)
   return {
     render: createFunction(`with(this){return ${code}}`),
   }
@@ -22,6 +20,7 @@ export function createFunction(code){
   try {
     return new Function(code)
   } catch (err) {
+    console.log(err)
     return function(){}
   }
 }

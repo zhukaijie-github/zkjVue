@@ -1,3 +1,5 @@
+
+import { makeMap } from "../shared/util.js";
 /**
  * 将html字符串 转换成 ast 树
  * @param {模版字符串} template
@@ -89,26 +91,13 @@ function getShouldDecode(href) {
   div.innerHTML = href ? '<a href="\n"/>' : '<div a="\n"/>';
   return div.innerHTML.indexOf("&#10;") > 0;
 }
-var inBrowser = typeof window !== 'undefined';
+var inBrowser = typeof window !== "undefined";
 // #3663: IE在属性值中编码换行符，而其他浏览器不这样做
 var shouldDecodeNewlines = inBrowser ? getShouldDecode(false) : false;
 // #6828: Chrome在a[href]中编码内容
 var shouldDecodeNewlinesForHref = inBrowser ? getShouldDecode(true) : false;
 
-function makeMap(str, expectsLowerCase) {
-  var map = Object.create(null);
-  var list = str.split(",");
-  for (var i = 0; i < list.length; i++) {
-    map[list[i]] = true;
-  }
-  return expectsLowerCase
-    ? function (val) {
-        return map[val.toLowerCase()];
-      }
-    : function (val) {
-        return map[val];
-      };
-}
+
 
 function decodeAttr(value, shouldDecodeNewlines) {
   var re = shouldDecodeNewlines ? encodedAttrWithNewLines : encodedAttr;
@@ -132,21 +121,217 @@ function createASTElement(tag, attrs, parent) {
 
 function makeAttrsMap(attrs) {
   var map = {};
-  
+
   for (var i = 0, l = attrs.length; i < l; i++) {
     map[attrs[i].name] = attrs[i].value;
   }
   return map;
 }
 
+var isPlainTextElement = makeMap("script,style,textarea", true);
+function isTextTag(el) {
+  return el.tag === "script" || el.tag === "style";
+}
+var decoder;
+var he = {
+  decode: function decode(html) {
+    decoder = decoder || document.createElement("div");
+    decoder.innerHTML = html;
+    return decoder.textContent;
+  },
+};
+var decodeHTMLCached = cached(he.decode);
+
+function cached(fn) {
+  var cache = Object.create(null);
+  return function cachedFn(str) {
+    var hit = cache[str];
+    return hit || (cache[str] = fn(str));
+  };
+}
+
+var defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g;
+var regexEscapeRE = /[-.*+?^${}()|[\]\/\\]/g;
+
+var buildRegex = cached(function (delimiters) {
+  var open = delimiters[0].replace(regexEscapeRE, '\\$&');
+  var close = delimiters[1].replace(regexEscapeRE, '\\$&');
+  return new RegExp(open + '((?:.|\\n)+?)' + close, 'g')
+});
+
+function parseFilters (exp) {
+  var inSingle = false;
+  var inDouble = false;
+  var inTemplateString = false;
+  var inRegex = false;
+  var curly = 0;
+  var square = 0;
+  var paren = 0;
+  var lastFilterIndex = 0;
+  var c, prev, i, expression, filters;
+
+  for (i = 0; i < exp.length; i++) {
+    prev = c;
+    c = exp.charCodeAt(i);
+    if (inSingle) {
+      if (c === 0x27 && prev !== 0x5C) { inSingle = false; }
+    } else if (inDouble) {
+      if (c === 0x22 && prev !== 0x5C) { inDouble = false; }
+    } else if (inTemplateString) {
+      if (c === 0x60 && prev !== 0x5C) { inTemplateString = false; }
+    } else if (inRegex) {
+      if (c === 0x2f && prev !== 0x5C) { inRegex = false; }
+    } else if (
+      c === 0x7C && // pipe
+      exp.charCodeAt(i + 1) !== 0x7C &&
+      exp.charCodeAt(i - 1) !== 0x7C &&
+      !curly && !square && !paren
+    ) {
+      if (expression === undefined) {
+        // first filter, end of expression
+        lastFilterIndex = i + 1;
+        expression = exp.slice(0, i).trim();
+      } else {
+        pushFilter();
+      }
+    } else {
+      switch (c) {
+        case 0x22: inDouble = true; break         // "
+        case 0x27: inSingle = true; break         // '
+        case 0x60: inTemplateString = true; break // `
+        case 0x28: paren++; break                 // (
+        case 0x29: paren--; break                 // )
+        case 0x5B: square++; break                // [
+        case 0x5D: square--; break                // ]
+        case 0x7B: curly++; break                 // {
+        case 0x7D: curly--; break                 // }
+      }
+      if (c === 0x2f) { // /
+        var j = i - 1;
+        var p = (void 0);
+        // find first non-whitespace prev char
+        for (; j >= 0; j--) {
+          p = exp.charAt(j);
+          if (p !== ' ') { break }
+        }
+        if (!p || !validDivisionCharRE.test(p)) {
+          inRegex = true;
+        }
+      }
+    }
+  }
+
+  if (expression === undefined) {
+    expression = exp.slice(0, i).trim();
+  } else if (lastFilterIndex !== 0) {
+    pushFilter();
+  }
+
+  function pushFilter () {
+    (filters || (filters = [])).push(exp.slice(lastFilterIndex, i).trim());
+    lastFilterIndex = i + 1;
+  }
+
+  if (filters) {
+    for (i = 0; i < filters.length; i++) {
+      expression = wrapFilter(expression, filters[i]);
+    }
+  }
+
+  return expression
+}
+function wrapFilter (exp, filter) {
+  var i = filter.indexOf('(');
+  if (i < 0) {
+    // _f: resolveFilter
+    return ("_f(\"" + filter + "\")(" + exp + ")")
+  } else {
+    var name = filter.slice(0, i);
+    var args = filter.slice(i + 1);
+    return ("_f(\"" + name + "\")(" + exp + (args !== ')' ? ',' + args : args))
+  }
+}
 
 
-var isPlainTextElement = makeMap('script,style,textarea', true);
-  console.log('isPlainTextElement',isPlainTextElement)
+function parseText (
+  text,
+  delimiters
+) {
+  var tagRE = delimiters ? buildRegex(delimiters) : defaultTagRE;
+  if (!tagRE.test(text)) {
+    return
+  }
+  var tokens = [];
+  var rawTokens = [];
+  var lastIndex = tagRE.lastIndex = 0;
+  var match, index, tokenValue;
+  while ((match = tagRE.exec(text))) {
+    index = match.index;
+    // push text token
+    if (index > lastIndex) {
+      rawTokens.push(tokenValue = text.slice(lastIndex, index));
+      tokens.push(JSON.stringify(tokenValue));
+    }
+    // tag token
+    var exp = parseFilters(match[1].trim());
+    tokens.push(("_s(" + exp + ")"));
+    rawTokens.push({ '@binding': exp });
+    lastIndex = index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    rawTokens.push(tokenValue = text.slice(lastIndex));
+    tokens.push(JSON.stringify(tokenValue));
+  }
+  return {
+    expression: tokens.join('+'),
+    tokens: rawTokens
+  }
+}
+
+
+function processElement (
+  element,
+  options
+) {
+  processAttrs(element);
+  return element
+}
+
+
+function processAttrs (el) {
+  var list = el.attrsList;
+  var i, l, name, rawName, value, modifiers, syncGen, isDynamic;
+  for (i = 0, l = list.length; i < l; i++) {
+    name = rawName = list[i].name;
+    value = list[i].value;
+    addAttr(el, name, JSON.stringify(value), list[i]);
+  }
+}
+
+function addAttr (el, name, value, range, dynamic) {
+  var attrs = dynamic
+    ? (el.dynamicAttrs || (el.dynamicAttrs = []))
+    : (el.attrs || (el.attrs = []));
+  attrs.push(rangeSetItem({ name: name, value: value, dynamic: dynamic }, range));
+  el.plain = false;
+}
+
+function rangeSetItem (
+  item,
+  range
+) {
+  if (range) {
+    if (range.start != null) {
+      item.start = range.start;
+    }
+    if (range.end != null) {
+      item.end = range.end;
+    }
+  }
+  return item
+}
 
 export function parse(template, options) {
-  debugger
-
   var stack = [];
   let root; //根标签Ast
   let currentParent; //当前正在解析的，且内容是标签，不是字符串文本的引用，提供给下一次解析时需要引用父类标签时用到
@@ -154,10 +339,22 @@ export function parse(template, options) {
   let inPre = false;
   let warned = false;
 
+  var delimiters = options.delimiters;
+
   function closeElement(element) {
     //因为匹配到了闭合标签，因此当前算是一个回路结束了、
     //trimEndingWhitespace把当前标签的子类查看一下有没有一些空格子元素，然后去掉
     trimEndingWhitespace(element);
+    
+    if (!inVPre && !element.processed) {
+      element = processElement(element, options);
+    }
+
+    if (currentParent && !element.forbidden) {
+      currentParent.children.push(element);
+      element.parent = currentParent;
+    }
+   
   }
 
   function trimEndingWhitespace(el) {
@@ -176,6 +373,7 @@ export function parse(template, options) {
 
   parseHTML(template, {
     expectHTML: options.expectHTML,
+
     start: function (tag, attrs, unary, start$1, end) {
       // console.log(attrs)
       var element = createASTElement(tag, attrs, currentParent);
@@ -206,7 +404,7 @@ export function parse(template, options) {
         closeElement(element);
       }
 
-      console.log('start--',currentParent)
+      // console.log('start--',currentParent)
     },
 
     end: function end(tag, start, end$1) {
@@ -219,12 +417,48 @@ export function parse(template, options) {
       }
       closeElement(element);
 
-      console.log('end--',currentParent)
+      // console.log('end--',currentParent)
     },
 
-    chars: function chars (text, start, end) {
-      // console.log(currentParent)
+    chars: function chars(text, start, end) {
+      /**
+       * 这里先分两种情况
+       * 1. 纯文本 比如：1333第三方
+       * 2. 表达式 比如：{{name}}
+       */
       var children = currentParent.children;
+      if (inPre || text.trim()) {
+        text = isTextTag(currentParent) ? text : decodeHTMLCached(text);
+      }
+      if (text) {
+        var res;
+        var child;
+        if (!inVPre && text !== " " && (res = parseText(text, delimiters))) {
+          child = {
+            type: 2,
+            expression: res.expression,
+            tokens: res.tokens,
+            text: text,
+          };
+        } else if (
+          text !== " " ||
+          !children.length ||
+          children[children.length - 1].text !== " "
+        ) {
+          child = {
+            type: 3,
+            text: text,
+          };
+        }
+        if (child) {
+          if (options.outputSourceRange) {
+            child.start = start;
+            child.end = end;
+          }
+          children.push(child);
+        }
+      }
+
       // console.log('children', children)
       // if (inPre || text.trim()) {
       //   text = isTextTag(currentParent) ? text : decodeHTMLCached(text);
@@ -272,10 +506,12 @@ export function parse(template, options) {
       // }
     },
   });
+  return root;
 }
 
 // 解析html字符串
 export function parseHTML(html, options) {
+  // debugger;
   var stack = [];
   // 期望是html字符串
   var expectHTML = options.expectHTML;
@@ -293,13 +529,13 @@ export function parseHTML(html, options) {
 
         // 开始标签
         var startTagMatch = parseStartTag();
-        console.log(startTagMatch);
+        // console.log(startTagMatch);
         if (startTagMatch) {
           handleStartTag(startTagMatch);
           if (shouldIgnoreFirstNewline(startTagMatch.tagName, html)) {
             advance(1);
           }
-          continue
+          continue;
         }
 
         // 结束标签
@@ -308,7 +544,7 @@ export function parseHTML(html, options) {
           var curIndex = index;
           advance(endTagMatch[0].length);
           parseEndTag(endTagMatch[1], curIndex, index);
-          continue
+          continue;
         }
       }
 
@@ -464,7 +700,6 @@ export function parseHTML(html, options) {
         attrs[i].start = args.start + args[0].match(/^\s*/).length;
         attrs[i].end = args.end;
       }
-      
     }
 
     if (!unary) {

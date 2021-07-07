@@ -1,5 +1,7 @@
 import { initMixin } from "./init.js";
 import { stateMixin } from "./state.js";
+import { renderMixin } from "./render.js";
+import { lifecycleMixin } from "./lifecycle.js";
 
 function ZkjVue(options) {
   // 初始化
@@ -16,5 +18,8 @@ initMixin(ZkjVue);
 
 */
 stateMixin(ZkjVue);
+
+lifecycleMixin(ZkjVue)
+renderMixin(ZkjVue)
 
 export default ZkjVue;
